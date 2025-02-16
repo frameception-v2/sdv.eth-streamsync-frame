@@ -22,25 +22,90 @@ import { createStore } from "mipd";
 import { Label } from "~/components/ui/label";
 import { PROJECT_TITLE } from "~/lib/constants";
 
-function ExampleCard() {
+function StreamCard({ streamUrl }: { streamUrl: string }) {
   return (
-    <Card>
+    <Card className="mb-4">
       <CardHeader>
-        <CardTitle>Welcome to the Frame Template</CardTitle>
-        <CardDescription>
-          This is an example card that you can customize or remove
-        </CardDescription>
+        <CardTitle className="flex items-center gap-2">
+          Live Stream
+          <span className="flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+          </span>
+        </CardTitle>
+        <CardDescription>Watching: {new URL(streamUrl).hostname}</CardDescription>
       </CardHeader>
       <CardContent>
-        <Label>Place content in a Card here.</Label>
+        <div className="aspect-video relative">
+          <iframe
+            src={streamUrl}
+            className="w-full h-full rounded-lg"
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+          />
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-export default function Frame() {
+function ChatCard({
+  messages,
+  onSendMessage,
+  isModerator,
+}: {
+  messages: Array<{ id: string; author: string; message: string; isModerator: boolean }>;
+  onSendMessage: (message: string) => void;
+  isModerator: boolean;
+}) {
+  const [message, setMessage] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (message.trim()) {
+      onSendMessage(message.trim());
+      setMessage('');
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Live Chat {isModerator && <span className="text-purple-500">(Moderator)</span>}</CardTitle>
+      </CardHeader>
+      <CardContent className="h-48 overflow-y-auto">
+        <div className="space-y-2">
+          {messages.map((msg) => (
+            <div key={msg.id} className="flex gap-2 text-sm">
+              <span className="font-medium text-purple-500">{msg.author}:</span>
+              <span className="flex-1">{msg.message}</span>
+              {msg.isModerator && <span className="text-purple-500">⭐</span>}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+      <div className="p-4 border-t">
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="flex-1 p-2 border rounded"
+            placeholder="Type a message..."
+          />
+          <PurpleButton type="submit">Send</PurpleButton>
+        </form>
+      </div>
+    </Card>
+  );
+}
+
+export default function Frame({ streamUrl }: { streamUrl: string }) {
+  const { data: session } = useSession();
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [context, setContext] = useState<Context.FrameContext>();
+  const [messages, setMessages] = useState<Array<{ id: string; author: string; message: string; isModerator: boolean }>>([]);
+  const [currentUserFid, setCurrentUserFid] = useState<number | null>(null);
 
   const [added, setAdded] = useState(false);
 
@@ -90,6 +155,14 @@ export default function Frame() {
         setAdded(false);
       });
 
+      sdk.on(CHAT_MESSAGE_EVENT, (message) => {
+        setMessages(prev => [...prev, message]);
+      });
+
+      if (session?.user?.fid) {
+        setCurrentUserFid(session.user.fid);
+      }
+
       sdk.on("notificationsEnabled", ({ notificationDetails }) => {
         console.log("notificationsEnabled", notificationDetails);
       });
@@ -136,11 +209,25 @@ export default function Frame() {
         paddingRight: context?.client.safeAreaInsets?.right ?? 0,
       }}
     >
-      <div className="w-[300px] mx-auto py-2 px-2">
+      <div className="w-full max-w-[600px] mx-auto py-2 px-2">
         <h1 className="text-2xl font-bold text-center mb-4 text-gray-700 dark:text-gray-300">
           {PROJECT_TITLE}
         </h1>
-        <ExampleCard />
+        <StreamCard streamUrl={streamUrl} />
+        <ChatCard
+          messages={messages}
+          onSendMessage={(message) => {
+            const newMessage = {
+              id: Date.now().toString(),
+              author: currentUserFid ? `User ${truncateAddress(currentUserFid.toString())}` : 'Guest',
+              message,
+              isModerator: currentUserFid === Number(new URL(streamUrl).searchParams.get('caster_fid'))
+            };
+            setMessages(prev => [...prev, newMessage]);
+            sdk.actions.emit(CHAT_MESSAGE_EVENT, newMessage);
+          }}
+          isModerator={currentUserFid === Number(new URL(streamUrl).searchParams.get('caster_fid'))}
+        />
       </div>
     </div>
   );
