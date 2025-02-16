@@ -100,7 +100,7 @@ export default function Frame(
 
   const handleSwitchChain = useCallback(() => {
     switchChain({ chainId: nextChain.id });
-  }, [switchChain, chainId]);
+  }, [switchChain, nextChain.id]);
 
   useEffect(() => {
     const load = async () => {
